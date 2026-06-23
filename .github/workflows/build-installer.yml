@@ -1,0 +1,111 @@
+# ============================================================================
+# build-installer.yml  ·  GitHub Actions: compila Cornell Box y genera
+# el instalador de Windows (CornellBox-Setup.exe) automáticamente.
+#
+# Se ejecuta:
+#   - Manualmente desde la pestaña Actions (workflow_dispatch).
+#   - Automáticamente al crear un tag de release (v*).
+#
+# Resultado: artifact descargable "CornellBox-Setup" con el instalador.
+# ============================================================================
+
+name: "Build Windows Installer"
+
+on:
+  workflow_dispatch:          # Botón manual en Actions
+  push:
+    tags:
+      - "v*"                  # Al crear un tag como v1.0, v1.1, etc.
+
+jobs:
+  build-installer:
+    name: "Compilar y empaquetar (Windows / MinGW-w64)"
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}     # Todos los pasos corren dentro de MSYS2
+
+    steps:
+      # ── 1. Checkout del repositorio ──────────────────────────────────────
+      - name: "Checkout del código"
+        uses: actions/checkout@v4
+
+      # ── 2. Instalar MSYS2 + MinGW-w64 + dependencias ────────────────────
+      - name: "Instalar MSYS2 y dependencias"
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-glfw
+            mingw-w64-x86_64-glew
+            make
+
+      # ── 3. Compilar el proyecto ──────────────────────────────────────────
+      - name: "Compilar cornellbox.exe"
+        working-directory: cornellbox
+        run: mingw32-make -j$(nproc)
+
+      # ── 4. Generar carpeta portable (binario + shaders + DLLs) ──────────
+      - name: "Generar paquete portable (make dist)"
+        working-directory: cornellbox
+        run: mingw32-make dist
+
+      # ── 5. Verificar contenido de dist ──────────────────────────────────
+      - name: "Verificar contenido de dist/"
+        working-directory: cornellbox
+        run: |
+          echo "==> Contenido de dist/cornellbox/:"
+          ls -la dist/cornellbox/
+          echo ""
+          echo "==> Shaders:"
+          ls -la dist/cornellbox/shaders/
+          echo ""
+          echo "==> DLLs incluidos:"
+          ls -la dist/cornellbox/*.dll 2>/dev/null || echo "(sin DLLs)"
+
+      # ── 6. Instalar Inno Setup (shell nativo de Windows) ────────────────
+      - name: "Instalar Inno Setup 6"
+        shell: pwsh
+        run: |
+          # Descargar Inno Setup 6 directamente desde jrsoftware.org
+          $url = "https://jrsoftware.org/download.php/is.exe"
+          $installer = "$env:TEMP\innosetup.exe"
+          Write-Host "Descargando Inno Setup desde $url ..."
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Instalando Inno Setup en modo silencioso..."
+          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait
+          Write-Host "Inno Setup instalado."
+          # Verificar la instalación
+          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (Test-Path $isccPath) {
+            Write-Host "ISCC encontrado en: $isccPath"
+          } else {
+            Write-Error "No se encontró ISCC.exe. Verificar la instalación."
+            exit 1
+          }
+
+      # ── 7. Compilar el instalador con Inno Setup ────────────────────────
+      - name: "Compilar instalador (CornellBox-Setup.exe)"
+        shell: pwsh
+        working-directory: cornellbox/installer
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          Write-Host "Compilando cornellbox.iss con ISCC..."
+          & $iscc cornellbox.iss
+          Write-Host ""
+          Write-Host "==> Instalador generado:"
+          Get-ChildItem -Path Output -Recurse | Format-Table Name, Length
+
+      # ── 8. Subir el instalador como artifact descargable ─────────────────
+      - name: "Subir CornellBox-Setup.exe como artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: CornellBox-Setup
+          path: cornellbox/installer/Output/CornellBox-Setup.exe
+          if-no-files-found: error
+          retention-days: 90

@@ -18,6 +18,12 @@ build/
 *.exe
 *.out
 
+# --- Carpeta portable generada por "make dist" ---
+dist/
+
+# --- Instalador de Windows generado por Inno Setup (*.exe ya esta ignorado arriba) ---
+installer/Output/
+
 # --- Generados en tiempo de ejecucion ---
 # layout del menu ImGui (se recrea solo)
 imgui.ini

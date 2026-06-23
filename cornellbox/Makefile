@@ -57,7 +57,7 @@ OBJ     := $(addprefix $(BUILD_DIR)/,$(notdir $(ALL_SRC:.cpp=.o)))
 # Permite encontrar los .cpp de imgui ademas de los de src
 VPATH := $(SRC_DIR):$(IMGUI_DIR):$(IMGUI_DIR)/backends
 
-.PHONY: all clean run
+.PHONY: all clean run dist
 
 all: $(APP)
 
@@ -66,13 +66,36 @@ $(APP): $(OBJ)
 	@echo "==> Compilado: ./$(APP)"
 
 $(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
+# Recompila si cambia algun header (.d generados con -MMD).
+-include $(wildcard $(BUILD_DIR)/*.d)
+
 run: $(APP)
 	$(RUN)
 
+# Empaqueta una carpeta portable (binario + shaders) para copiar a otra PC.
+# El binario busca los shaders junto a si mismo, asi que basta copiar dist/cornellbox/.
+# En Windows (MSYS2) ademas copia automaticamente los DLL de MinGW necesarios,
+# dejando la carpeta lista para el instalador de Inno Setup.
+DIST_DIR := dist/cornellbox
+dist: $(APP)
+	@mkdir -p $(DIST_DIR)/shaders
+	@cp $(APP) $(DIST_DIR)/
+	@cp shaders/* $(DIST_DIR)/shaders/
+	@cp README.md $(DIST_DIR)/ 2>/dev/null || true
+	@cp ../LICENSE $(DIST_DIR)/ 2>/dev/null || true
+	@if echo "$(UNAME_S)" | grep -qiE 'mingw|msys'; then \
+	  echo "    Copiando DLLs de MinGW (ldd)..."; \
+	  for dll in $$(ldd $(APP) | grep -iE 'mingw64|/ucrt64' | awk '{print $$3}'); do \
+	    [ -f "$$dll" ] && cp "$$dll" $(DIST_DIR)/ || true; \
+	  done; \
+	fi
+	@echo "==> Bundle listo en cornellbox/$(DIST_DIR)/"
+	@echo "    Para el instalador de Windows: ver cornellbox/installer/LEEME_INSTALADOR.md"
+
 clean:
-	$(RM) $(BUILD_DIR) $(APP)
+	$(RM) $(BUILD_DIR) $(APP) dist

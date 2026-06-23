@@ -6,6 +6,16 @@
 #include <sstream>
 #include <iostream>
 #include <vector>
+#include <cstdlib>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <cstdint>
+#else
+#include <unistd.h>
+#endif
 
 #ifndef SHADER_DIR
 #define SHADER_DIR "shaders"
@@ -24,8 +34,50 @@ inline std::string readFile(const std::string& path) {
     return ss.str();
 }
 
+inline bool fileExists(const std::string& p) { std::ifstream f(p); return (bool)f; }
+
+// Carpeta donde reside el ejecutable (para encontrar shaders al lado del binario).
+inline std::string executableDir() {
+    char buf[4096];
+#if defined(_WIN32)
+    DWORD n = GetModuleFileNameA(nullptr, buf, (DWORD)sizeof(buf));
+    if (n == 0 || n >= sizeof(buf)) return "";
+    std::string p(buf, n);
+    size_t s = p.find_last_of("\\/");
+#elif defined(__APPLE__)
+    uint32_t sz = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &sz) != 0) return "";
+    std::string p(buf);
+    size_t s = p.find_last_of('/');
+#else
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0) return "";
+    buf[n] = '\0';
+    std::string p(buf);
+    size_t s = p.find_last_of('/');
+#endif
+    return (s == std::string::npos) ? "" : p.substr(0, s);
+}
+
+// Resuelve la carpeta de shaders una sola vez, en este orden de preferencia:
+//   1) variable de entorno CORNELLBOX_SHADERS
+//   2) carpeta "shaders" junto al ejecutable (permite distribuir el binario)
+//   3) SHADER_DIR fijado al compilar (modo desarrollo)
+inline const std::string& shaderBaseDir() {
+    static const std::string base = []() -> std::string {
+        const char* env = std::getenv("CORNELLBOX_SHADERS");
+        if (env && *env && fileExists(std::string(env) + "/fullscreen.vert"))
+            return std::string(env);
+        std::string ed = executableDir();
+        if (!ed.empty() && fileExists(ed + "/shaders/fullscreen.vert"))
+            return ed + "/shaders";
+        return std::string(SHADER_DIR);
+    }();
+    return base;
+}
+
 inline std::string shaderPath(const std::string& name) {
-    return std::string(SHADER_DIR) + "/" + name;
+    return shaderBaseDir() + "/" + name;
 }
 
 // Resuelve directivas  #include "fichero.glsl"  (un nivel, suficiente aqui).

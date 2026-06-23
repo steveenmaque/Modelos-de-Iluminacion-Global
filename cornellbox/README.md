@@ -125,6 +125,59 @@ Hay dos caminos. El **A (MSYS2)** es el más sencillo porque reutiliza el mismo
 
 ---
 
+## Ejecutar en otra computadora
+
+Este programa es una aplicación **GUI con GPU** (OpenGL 4.3 + *compute shaders*).
+Su rendimiento depende de la GPU de la máquina destino, **no** del método de
+empaquetado. Requisito mínimo: una GPU con **OpenGL 4.3+** (cualquiera de la
+última década, incluidas las integradas Intel HD 500+). Opciones, de más a menos
+recomendable:
+
+### 1. Compilar en la PC destino (recomendado)
+Es lo más fiable y da el mejor rendimiento. Sigue las instrucciones de *Linux* o
+*Windows* de arriba; compila en segundos. Como el binario busca los shaders junto
+a sí mismo, no hay rutas que ajustar.
+
+### 2. Instalador de Windows (`CornellBox-Setup.exe`)
+Para entregar a usuarios de Windows un instalador con un clic (menú Inicio +
+desinstalador, sin necesidad de instalar nada más). El script de **Inno Setup**
+y la guía paso a paso están en
+[`installer/LEEME_INSTALADOR.md`](installer/LEEME_INSTALADOR.md). En resumen, en
+una máquina Windows: `mingw32-make dist` → compilar `installer/cornellbox.iss`
+con Inno Setup → `CornellBox-Setup.exe`.
+
+### 3. Carpeta portable (sin compilar en destino)
+En la máquina donde ya compila, genera un paquete:
+```sh
+make dist          # crea dist/cornellbox/ con el binario + shaders/ (+ DLLs en Windows)
+```
+Copia esa carpeta a la otra PC y ejecuta el binario desde dentro. Condiciones:
+- **Misma familia de SO/arquitectura** (un binario de Linux x64 no corre en
+  Windows y viceversa: hay que generar `dist` en cada plataforma).
+- En **Windows**, `make dist` ya copia los DLL necesarios automáticamente.
+- En **Linux**, la PC destino necesita las libs del sistema instaladas
+  (`glfw`, `glew`); si no, ver la opción AppImage abajo.
+
+### 4. Linux: archivo único con AppImage (opcional)
+Para un único archivo que corra en casi cualquier distro sin instalar nada,
+empaqueta con [`linuxdeploy`](https://github.com/linuxdeploy/linuxdeploy)
+(incluye las libs dentro del AppImage). Útil si no quieres pedir que instalen
+`glfw`/`glew` en la PD destino. Sigue necesitando una GPU con OpenGL 4.3+.
+
+### ¿Y Docker? — No recomendado aquí
+Docker está pensado para servicios/CLI, no para apps gráficas con GPU. Para
+correr esto en un contenedor necesitarías **pasar la GPU** (NVIDIA Container
+Toolkit, solo en host Linux + NVIDIA) **y el display** (montar el socket X11):
+es frágil, atado al host y **no mejora el rendimiento**. Para una exposición es
+justo lo que conviene evitar. Usa la opción 1 o 2.
+
+### Rendimiento y plan B
+El render es progresivo: en una GPU más lenta **no se rompe**, solo tarda más en
+limpiarse el ruido. Si la PC destino es floja, baja la **resolución** y las
+**muestras/frame** desde el menú. Como respaldo para la exposición, lleva también
+las **capturas/video pregrabados** (carpeta `capturas/` o el modo headless), tal
+como aconseja el informe.
+
 ## Modo headless (genera PNG sin abrir ventana)
 Útil para las figuras del informe y la tabla de métricas:
 ```sh

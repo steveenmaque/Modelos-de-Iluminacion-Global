@@ -1,0 +1,46 @@
+# ============================================================================
+# .gitignore  ·  Proyecto Modelos Globales de Iluminacion (raiz del repositorio)
+# Se versionan: informe, documentacion, codigo (src/ shaders/), Makefile,
+# README, las figuras de cornellbox/capturas/ y las dependencias vendorizadas
+# de cornellbox/third_party/ (Dear ImGui + stb).
+# Nota: git NO admite comentarios en la misma linea que un patron.
+# ============================================================================
+
+# --- Artefactos de compilacion ---
+build/
+*.o
+*.obj
+*.a
+*.lib
+
+# --- Binarios del programa (Linux y Windows) ---
+/cornellbox/cornellbox
+*.exe
+*.out
+
+# --- Generados en tiempo de ejecucion ---
+# layout del menu ImGui (se recrea solo)
+imgui.ini
+# capturas del boton "Guardar captura PNG"
+captura_*.png
+# salidas por defecto del modo --render
+render_*.png
+# (las figuras 00_*.png ... 05_*.png de cornellbox/capturas/ SI se versionan)
+
+# --- Herramientas / IDE ---
+# cache de clangd
+.cache/
+# compile_commands.json contiene rutas absolutas locales; es regenerable
+compile_commands.json
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Claude Code (configuracion local de la maquina) ---
+.claude/settings.local.json
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini

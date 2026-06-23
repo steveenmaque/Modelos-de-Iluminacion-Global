@@ -1,0 +1,65 @@
+#version 430 core
+// photon.comp - primera pasada del mapeo de fotones.
+// Emite fotones desde la luz, los traza por la escena y deposita los fotones
+// CAUSTICOS (los que pasan por una superficie especular/refractante antes de
+// llegar al suelo difuso) en una imagen entera mediante sumas atomicas.
+#include "common.glsl"
+#include "scene.glsl"
+
+layout(local_size_x = 64) in;
+layout(r32ui, binding = 0) uniform uimage2D uCausticImg;
+
+uniform int uPhotonCount;   // fotones emitidos este frame
+uniform int uPhotonFrame;   // semilla (cambia cada frame -> acumulacion progresiva)
+uniform int uMaxBounces;
+
+// Deposita flujo en el mapa de causticas con un kernel gaussiano 3x3.
+void deposit(vec2 xz, float flux) {
+    vec2 uv = xz * 0.5 + 0.5;
+    ivec2 sz = imageSize(uCausticImg);
+    vec2 fp = uv * vec2(sz);
+    ivec2 base = ivec2(fp);
+    for (int dy = -1; dy <= 1; ++dy)
+    for (int dx = -1; dx <= 1; ++dx) {
+        ivec2 t = base + ivec2(dx, dy);
+        if (t.x < 0 || t.y < 0 || t.x >= sz.x || t.y >= sz.y) continue;
+        float w = exp(-0.5 * float(dx * dx + dy * dy) / 0.6);
+        imageAtomicAdd(uCausticImg, t, uint(flux * w * CAUSTIC_SCALE));
+    }
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uint(uPhotonCount)) return;
+
+    seedRng(uvec3(id, uint(uPhotonFrame), 0x9e3779b9u));
+
+    // Emision: punto en la luz + direccion coseno hacia abajo.
+    vec3 nl; float area;
+    vec3 p = sampleLight(rnd2(), nl, area);
+    vec3 rd = cosineSampleHemisphere(nl, rnd2());
+    vec3 ro = p + rd * EPS;
+
+    float flux = 1.0;          // unidad por foton (la escala la fija el gain de causticas)
+    bool hasSpecular = false;
+
+    for (int depth = 0; depth < uMaxBounces; ++depth) {
+        Hit h;
+        if (!intersectScene(ro, rd, h)) return;       // escapo de la sala
+        if (h.mat == MAT_EMISSIVE) return;            // volvio a la luz
+
+        if (h.mat == MAT_DIFFUSE) {
+            // Solo nos interesan los fotones causticos depositados en el suelo.
+            if (hasSpecular && h.n.y > 0.9 && h.p.y < -0.99)
+                deposit(h.p.xz, flux);
+            return;                                   // el foton se absorbe en la difusa
+        } else if (h.mat == MAT_MIRROR) {
+            hasSpecular = true;
+            flux *= 0.95;
+            rd = reflect(rd, h.n); ro = h.p + rd * EPS;
+        } else {                                      // dielectrico
+            hasSpecular = true;
+            rd = scatterDielectric(rd, h.n, uGlassIOR); ro = h.p + rd * EPS;
+        }
+    }
+}
